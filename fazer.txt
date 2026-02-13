@@ -1,0 +1,372 @@
+Compreendido. Vamos direto ao ponto, sem rodeios. Você quer migrar o **EVA-Mind** para Windows, torná-lo uma aplicação geral (assistente virtual desktop) e quer detalhes técnicos de implementação.
+
+Abaixo está o **Manual de Implementação Técnica** para sair da arquitetura Mobile/WebView e ir para **Windows Nativo**.
+
+---
+
+### 1. Arquitetura Definida
+
+Para rodar liso no Windows e parecer um assistente nativo (tipo Cortana/Copilot), esta é a stack obrigatória:
+
+1. **UI/Window:** `bitsdojo_window` (Para janelas customizadas sem bordas padrão do Windows).
+2. **Avatar Engine:** **Rive** (Leve, performático e permite controlar a boca via código).
+3. **Áudio I/O:** `record` (Microfone) + `flutter_soloud` (Motor de áudio C++ de baixa latência para streaming PCM). **Esqueça a WebView.**
+4. **Background:** `system_tray` (Para o EVA ficar ouvindo mesmo minimizado).
+
+---
+
+### 2. Configuração do `pubspec.yaml`
+
+Adicione estas dependências exatas. Elas substituem toda a gambiarra de JavaScript/WebView.
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Janela e Sistema
+  bitsdojo_window: ^0.1.6
+  system_tray: ^2.0.2
+  window_manager: ^0.3.7
+  
+  # Comunicação e Lógica (Já existentes, mantenha)
+  web_socket_channel: ^2.4.0
+  http: ^1.2.0
+  flutter_dotenv: ^5.1.0
+  get_it: ^7.6.0 # Injeção de dependência recomendada
+  
+  # Áudio e Avatar (O novo Core)
+  rive: ^0.13.4
+  record: ^5.1.0 # Gravação nativa Windows
+  flutter_soloud: ^2.0.0 # Player de baixa latência
+  path_provider: ^2.1.2
+
+```
+
+---
+
+### 3. Implementando o `main.dart` (Desktop Style)
+
+No Windows, a aplicação não pode parecer um app de celular esticado. Ela precisa ser uma janela flutuante elegante.
+
+```dart
+// lib/main.dart
+import 'package:flutter/material.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'presentation/screens/desktop_home.dart';
+import 'service_locator.dart'; // Vamos criar isso para organizar
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await setupServiceLocator(); // Inicializa Áudio e Sockets
+
+  runApp(const EvaMindDesktop());
+
+  // Configuração da Janela
+  doWhenWindowReady(() {
+    final win = appWindow;
+    win.minSize = const Size(400, 600); // Formato retrato "assistente"
+    win.size = const Size(450, 700);
+    win.alignment = Alignment.centerRight; // Abre no canto direito
+    win.title = "EVA Mind";
+    win.show();
+  });
+}
+
+class EvaMindDesktop extends StatelessWidget {
+  const EvaMindDesktop({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF1E1E1E),
+      ),
+      home: const DesktopHome(),
+    );
+  }
+}
+
+```
+
+---
+
+### 4. O Novo Serviço de Áudio (Core)
+
+Aqui está a substituição do `eva_webview_service.dart`. Em vez de passar áudio via ponte JS, vamos capturar bytes do microfone e enviar via WebSocket, e tocar o retorno via `SoLoud`.
+
+Crie o arquivo `lib/services/audio_service_windows.dart`:
+
+```dart
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:record/record.dart';
+import 'package:logger/logger.dart';
+import 'websocket_service.dart';
+
+class AudioServiceWindows {
+  final Logger _logger = Logger();
+  final WebSocketService _wsService;
+  
+  // Audio Engine
+  final _audioRecorder = AudioRecorder();
+  final _soloud = SoLoud.instance;
+  SoundHandle? _currentSpeechHandle;
+  
+  // Avatar Control (Stream para a UI ouvir)
+  final _amplitudeController = StreamController<double>.broadcast();
+  Stream<double> get amplitudeStream => _amplitudeController.stream;
+
+  AudioServiceWindows(this._wsService);
+
+  Future<void> initialize() async {
+    // 1. Inicia engine de som (Output)
+    await _soloud.init();
+    
+    // 2. Escuta mensagens do WebSocket (Áudio chegando do servidor)
+    _wsService.messages.listen((data) {
+       // Se for binário (PCM), toca
+       if (data is List<int>) {
+         _playAudioChunk(Uint8List.fromList(data));
+       }
+    });
+  }
+
+  // Gravação do Microfone (Input)
+  Future<void> startRecording() async {
+    if (await _audioRecorder.hasPermission()) {
+      final stream = await _audioRecorder.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+      );
+
+      stream.listen((data) {
+        // 1. Calcula volume para animar avatar (fazer ele "ouvir")
+        // (Cálculo simplificado de RMS)
+        double amplitude = _calculateRMS(data);
+        _amplitudeController.add(amplitude);
+
+        // 2. Envia para backend
+        _wsService.sendBinary(data); 
+      });
+    }
+  }
+
+  // Tocar áudio recebido (Output)
+  Future<void> _playAudioChunk(Uint8List audioData) async {
+    // SoLoud permite tocar buffers PCM diretamente da memória
+    // Nota: Em produção, você deve criar um buffer circular, 
+    // aqui é um exemplo direto.
+    final source = await _soloud.loadMem(
+      'chunk', 
+      audioData, 
+      LoadMode.memory,
+    );
+    await _soloud.play(source);
+    
+    // Simular movimento da boca baseado no áudio saindo
+    _amplitudeController.add(0.8); // Boca mexe quando sai áudio
+  }
+
+  double _calculateRMS(Uint8List data) {
+    // Lógica rápida para converter bytes em "volume" (0.0 a 1.0)
+    // Usado para UI reagir
+    return 0.5; // Placeholder para simplificar o exemplo
+  }
+
+  Future<void> stop() async {
+    await _audioRecorder.stop();
+  }
+}
+
+```
+
+---
+
+### 5. O Avatar Falante com Rive
+
+Você vai precisar de um arquivo `.riv` (animação). O Rive permite controlar "Inputs" (como números booleanos).
+Suponha que seu arquivo Rive tenha uma *State Machine* chamada "FaceMachine" e um input numérico chamado "MouthOpen" (0 a 100).
+
+Crie `lib/presentation/widgets/avatar_widget.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:rive/rive.dart';
+import '../../services/audio_service_windows.dart';
+
+class AvatarWidget extends StatefulWidget {
+  final AudioServiceWindows audioService;
+
+  const AvatarWidget({Key? key, required this.audioService}) : super(key: key);
+
+  @override
+  State<AvatarWidget> createState() => _AvatarWidgetState();
+}
+
+class _AvatarWidgetState extends State<AvatarWidget> {
+  SMINumber? _mouthInput;
+  SMIBool? _isListeningInput;
+
+  void _onRiveInit(Artboard artboard) {
+    final controller = StateMachineController.fromArtboard(
+      artboard,
+      'FaceMachine', // Nome definido no editor do Rive
+    );
+    
+    if (controller != null) {
+      artboard.addController(controller);
+      _mouthInput = controller.findInput<double>('MouthOpen') as SMINumber?;
+      _isListeningInput = controller.findInput<bool>('IsListening') as SMIBool?;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Conectar o áudio à animação
+    widget.audioService.amplitudeStream.listen((volume) {
+      if (_mouthInput != null) {
+        // Multiplica volume (0-1) por 100 para abrir a boca
+        _mouthInput!.value = volume * 100; 
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 300,
+      width: 300,
+      child: RiveAnimation.asset(
+        'assets/eva_avatar.riv', // Coloque seu arquivo aqui
+        fit: BoxFit.contain,
+        onInit: _onRiveInit,
+      ),
+    );
+  }
+}
+
+```
+
+---
+
+### 6. Atualizando o `WebSocketService`
+
+Seu `websocket_service.dart` atual espera JSON/String. Precisamos prepará-lo para enviar e receber bytes (PCM).
+
+Modifique o método `sendMessage` e a inicialização:
+
+```dart
+// No arquivo websocket_service.dart
+
+// Adicione este método
+void sendBinary(Uint8List data) {
+  if (_channel != null) {
+    _channel!.sink.add(data);
+  }
+}
+
+// Modifique o listener no connect()
+_channel!.stream.listen((message) {
+    if (message is String) {
+        // Processa JSON (comandos, textos)
+        _messageController.add(message);
+    } else if (message is List<int>) {
+        // Processa Áudio (PCM)
+        // Você precisará de um StreamController separado para bytes
+        _audioStreamController.add(message); 
+    }
+});
+
+```
+
+---
+
+### 7. Organizando a Tela Principal (`DesktopHome`)
+
+Juntando tudo na interface Windows com a barra customizada.
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
+import '../widgets/avatar_widget.dart';
+
+class DesktopHome extends StatelessWidget {
+  const DesktopHome({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          // Barra de Título Customizada (Arrastável)
+          WindowTitleBarBox(
+            child: Row(
+              children: [
+                Expanded(child: MoveWindow()), // Área para arrastar
+                const WindowButtons(), // Fechar, Minimizar
+              ],
+            ),
+          ),
+          
+          // Conteúdo
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // O Avatar
+                  const AvatarWidget(audioService: GetIt.I<AudioServiceWindows>()),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Botão de Falar (Microfone)
+                  FloatingActionButton(
+                    backgroundColor: Colors.cyanAccent,
+                    onPressed: () {
+                      // Toggle de gravação
+                      GetIt.I<AudioServiceWindows>().startRecording();
+                    },
+                    child: const Icon(Icons.mic, color: Colors.black),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WindowButtons extends StatelessWidget {
+  const WindowButtons({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        MinimizeWindowButton(),
+        MaximizeWindowButton(),
+        CloseWindowButton(),
+      ],
+    );
+  }
+}
+
+```
+
+### Resumo do Plano de Ação
+
+1. **Limpeza:** Remova o `flutter_inappwebview` do projeto Windows.
+2. **Asset:** Baixe ou compre um avatar Rive (procure por "Rive Animated Character" na comunidade Rive). Coloque em `assets/eva_avatar.riv`.
+3. **Código:** Copie e cole os serviços de áudio acima.
+4. **Backend:** Certifique-se que seu backend GCP aceita WebSocket binário (a maioria aceita por padrão).
+
+
+
