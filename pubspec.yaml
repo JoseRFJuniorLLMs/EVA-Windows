@@ -1,0 +1,40 @@
+name: eva_windows
+description: EVA Mind Desktop Assistant - Windows Native Implementation
+version: 1.0.0+1
+publish_to: "none"
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # --- UI & Window Management ---
+  bitsdojo_window: ^0.1.6 # Janelas customizadas sem borda
+  system_tray: ^2.0.2 # Ícone na bandeja do sistema
+  window_manager: ^0.3.7 # Gerenciamento de estado da janela
+
+  # --- Core: Audio & Avatar ---
+  rive: ^0.13.4 # Engine de animação vetorial
+  record: ^5.1.0 # Captura de áudio nativa (Windows)
+  flutter_soloud: ^3.4.10 # Engine de áudio C++ (Baixa latência)
+  path_provider: ^2.1.2 # Sistema de arquivos
+
+  # --- Logic & Comm ---
+  web_socket_channel: ^2.4.0 # Comunicação Bidirecional
+  get_it: ^7.6.0 # Injeção de Dependência
+  logger: ^2.0.0 # Logs estruturados
+  flutter_dotenv: ^5.1.0 # Variáveis de ambiente
+  permission_handler: ^11.3.0 # Permissões de microfone no Windows
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/eva_avatar.riv # OBRIGATÓRIO: Seu arquivo Rive
+    - .env
