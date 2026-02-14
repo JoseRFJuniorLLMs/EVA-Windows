@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:logger/logger.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'backend_selector_windows.dart';
 
 class WebSocketService {
   final Logger _logger = Logger();
@@ -18,8 +19,7 @@ class WebSocketService {
 
   bool get isConnected => _channel != null;
 
-  Future<void> connect([String? url]) async {
-    final targetUrl = url ?? dotenv.env['WS_URL'] ?? 'ws://localhost:8080/v1/ws';
+    final targetUrl = url ?? BackendSelectorWindows.wsBaseUrl;
     _lastUrl = targetUrl;
     
     try {

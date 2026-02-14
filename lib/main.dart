@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'data/services/backend_selector_windows.dart';
 import 'service_locator.dart';
 import 'presentation/screens/desktop_home.dart';
 
@@ -8,6 +9,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   await dotenv.load(fileName: ".env");
+  await BackendSelectorWindows.init();
   await setupServiceLocator();
 
   runApp(const EvaMindDesktopApp());
