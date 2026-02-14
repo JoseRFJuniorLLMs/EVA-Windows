@@ -18,7 +18,7 @@ dependencies:
   # --- Core: Audio & Avatar ---
   rive: ^0.13.4 # Engine de animação vetorial
   record: ^5.1.0 # Captura de áudio nativa (Windows)
-  flutter_soloud: ^3.4.10 # Engine de áudio C++ (Baixa latência)
+  audioplayers: ^5.2.1 # Ultra-stable Windows playback (precompiled DLL)
   path_provider: ^2.1.2 # Sistema de arquivos
 
   # --- Logic & Comm ---

@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  audioplayers_windows
   bitsdojo_window_windows
   permission_handler_windows
   record_windows
@@ -13,7 +14,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
-  flutter_soloud
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

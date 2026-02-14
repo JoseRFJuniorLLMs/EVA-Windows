@@ -19,6 +19,7 @@ class WebSocketService {
 
   bool get isConnected => _channel != null;
 
+  Future<void> connect([String? url]) async {
     final targetUrl = url ?? BackendSelectorWindows.wsBaseUrl;
     _lastUrl = targetUrl;
     

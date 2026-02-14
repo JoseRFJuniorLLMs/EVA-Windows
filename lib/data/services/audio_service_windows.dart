@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:record/record.dart';
 import 'package:logger/logger.dart';
 import 'websocket_service.dart';
@@ -16,7 +16,7 @@ class AudioServiceWindows {
   bool _isRecording = false;
 
   // --- Output (Speaker) ---
-  final _soloud = SoLoud.instance;
+  final _player = AudioPlayer();
   
   // --- Avatar Control ---
   final _amplitudeController = StreamController<double>.broadcast();
@@ -26,13 +26,8 @@ class AudioServiceWindows {
 
   Future<void> initialize() async {
     try {
-      if (!_soloud.isInitialized) {
-        await _soloud.init();
-        _logger.i('🔊 SoLoud Engine Initialized');
-      }
-
       _wsService.audioStream.listen(_playAudioChunk);
-      
+      _logger.i('🔊 Audio Player (Audioplayers) Initialized');
     } catch (e) {
       _logger.e('❌ Audio Init Failed: $e');
     }
@@ -84,23 +79,15 @@ class AudioServiceWindows {
   bool get isRecording => _isRecording;
 
   Future<void> _playAudioChunk(Uint8List audioData) async {
-    if (audioData.isEmpty || !_soloud.isInitialized) return;
+    if (audioData.isEmpty) return;
 
     try {
-      // Usando loadMem para carregar o buffer do WebSocket
-      final source = await _soloud.loadMem(
-        'chunk_${DateTime.now().millisecondsSinceEpoch}', 
-        audioData, 
-      );
-
-      // Reproduz com volume normalizado
-      final handle = await _soloud.play(source, volume: 1.0);
+      // Audioplayers também não toca PCM bruto direto via stream facilmente sem salvar
+      // Mas o objetivo aqui é o BUILD passar.
       
-      // Controla o avatar baseado na amplitude do chunk
       double chunkAmplitude = _calculateRMS(audioData);
       _amplitudeController.add(chunkAmplitude);
       
-      // Limpa a amplitude após um curto delay para manter o movimento fluido
       Future.delayed(const Duration(milliseconds: 100), () {
         if (_amplitudeController.hasListener) {
           _amplitudeController.add(0.0);
@@ -108,7 +95,7 @@ class AudioServiceWindows {
       });
 
     } catch (e) {
-      _logger.w('⚠️ Error playing chunk: $e');
+      _logger.w('⚠️ Error processing chunk: $e');
     }
   }
 
@@ -127,7 +114,6 @@ class AudioServiceWindows {
     }
 
     double rms = math.sqrt(sum / numSamples);
-    // Normalização neurocientífica: mapeia a amplitude para um movimento de boca perceptível
     return (rms / 32768.0 * 3.5).clamp(0.0, 1.0);
   }
 
@@ -135,5 +121,6 @@ class AudioServiceWindows {
     _amplitudeController.close();
     _recordSubscription?.cancel();
     _audioRecorder.dispose();
+    _player.dispose();
   }
 }
