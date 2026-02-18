@@ -16,9 +16,9 @@ dependencies:
   window_manager: ^0.3.7 # Gerenciamento de estado da janela
 
   # --- Core: Audio & Avatar ---
-  rive: ^0.13.4 # Engine de animação vetorial
-  record: ^5.1.0 # Captura de áudio nativa (Windows)
-  audioplayers: ^5.2.1 # Ultra-stable Windows playback (precompiled DLL)
+  # rive: ^0.11.1
+  record: ^6.2.0 # Fixed dependency conflict
+  audioplayers: ^6.5.1
   path_provider: ^2.1.2 # Sistema de arquivos
 
   # --- Logic & Comm ---

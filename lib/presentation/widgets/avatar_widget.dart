@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:rive/rive.dart';
+// import 'package:rive/rive.dart';
 import '../../data/services/audio_service_windows.dart';
 
 class AvatarWidget extends StatefulWidget {
@@ -12,8 +12,9 @@ class AvatarWidget extends StatefulWidget {
 }
 
 class _AvatarWidgetState extends State<AvatarWidget> {
-  SMINumber? _mouthInput;
+  // SMINumber? _mouthInput;
 
+  /*
   void _onRiveInit(Artboard artboard) {
     final controller = StateMachineController.fromArtboard(
       artboard,
@@ -25,27 +26,31 @@ class _AvatarWidgetState extends State<AvatarWidget> {
       _mouthInput = controller.findInput<double>('MouthValue') as SMINumber?;
     }
   }
+  */
 
   @override
   void initState() {
     super.initState();
+    /*
     widget.audioService.amplitudeStream.listen((volume) {
       if (_mouthInput != null && mounted) {
         _mouthInput!.value = volume * 100;
       }
     });
+    */
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return const SizedBox(
       height: 400,
       width: 400,
-      child: RiveAnimation.asset(
-        'assets/eva_avatar.riv',
-        fit: BoxFit.contain,
-        onInit: _onRiveInit,
-        stateMachines: const ['State Machine 1'],
+      child: Center(
+        child: Icon(
+          Icons.face,
+          size: 200,
+          color: Colors.cyanAccent,
+        ),
       ),
     );
   }

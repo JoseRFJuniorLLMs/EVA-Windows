@@ -7,7 +7,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   bitsdojo_window_windows
   permission_handler_windows
   record_windows
-  rive_common
   screen_retriever
   system_tray
   window_manager
